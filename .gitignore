@@ -1,0 +1,7 @@
+*.fasl
+*.fas
+*.?x??fsl
+*.bak
+*.log
+old/
+
