@@ -54,7 +54,7 @@ To run
 
 The two ACT-UP models that have been converted are named `recency-model` and `recency-frequency-model`.
 By default `run-cava-actup-server.sh` runs `recency-model`. To choose a different
-model pass its name as an argument to the script, for example, `./run-cava-actup-server.sh recency-frequency‘.
+model pass its name as an argument to the script, for example, `./run-cava-actup-server.sh recency-frequency`.
 
 Note that there’s a minor testing and debugging kludge in this run script that checks on the user name;
 you don’t want to run this as a user named `dfm` or bad things may happen.
