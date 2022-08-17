@@ -56,6 +56,29 @@ The two ACT-UP models that have been converted are named `recency-model` and `re
 By default `run-cava-actup-server.sh‘ runs `recency-model`, but that is essentially just a parameter
 passed to the Lisp code.
 
+When run as above a default model is selected from among those available. To choose a different
+model pass its name as an argument to the script, for example, `run-cava-actup-server.sh recency-frequency‘.
+
+Note that there’s a minor testing and debugging kludge in this run script that checks on the user name;
+you don’t want to run this as a user named `dfm` or bad things may happen.
+
+
+
+## Errors ##
+
+If an error is detected when handling a message instead of the above result a different
+JSON object will be returned, containing four slots, all with string values:
+
+* `error`: the Common Lisp name of the error’s type
+
+* `message` the JSON message that was being processed when the error was detected
+
+* `description`: the text the Common Lisp listener would have displayed when reporting the error interactively
+
+* `backtrace`: a backtrace from the point the error was detected; this is typically a longish string containing line feeds
+
+
+
 ## Next steps ##
 
 Next steps include
@@ -71,6 +94,8 @@ Next steps include
 
 * and possibly adding a bit more flexibility to the script for launching things.
 
+
+
 ## Adding models ##
 
 (This section is most likely primarily of interest to Drew and Christian.)
@@ -82,12 +107,14 @@ The time is the number of seconds since
 this run “started,” where it is assumed to have started one second before the first
 message was received.
 
+The names of such model functions should be exported from the `cava` package.
+
 ACT-UP memory is initialized before a model function is first called.
 While not currently used, there is a provision for setting ACT-UP parameters before
 the model function is called, if desired, by passing a plist as the `:model-parameters`
 keyword argument to the `cava:run` function. Optimized learning is off by default.
 
-A couple of possible useful utility functions are included
+A couple of possible useful utility functions (all in the `cava` package) are included
 
 * `place-into-bins` takes an alist mapping items to real numbers, and an optional number of bins, defaulting to six,
    and returns an alist mapping those same items to the corresponding number integers denoting equispaced bins;

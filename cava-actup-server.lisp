@@ -98,26 +98,28 @@
         (:timestamp . ,ts)))))
 
 (defun receive-udp (buffer model-function)
-  (handler-case (progn
-                  (vom:debug1 "Received bytes: ~S" buffer)
-                  (let ((msg (string-trim #?" \n\r"
-                                          (b:octets-to-string buffer :encoding :utf-8))))
-                    (vom:debug "Received: ~S" msg)
-                    (let* ((j:*json-identifier-name-to-lisp* #'j:simplified-camel-case-to-lisp)
-                           (*read-default-float-format* 'double-float)
-                           (json (with-input-from-string (s msg)
-                                   (j:decode-json-strict s))))
-                      (vom:debug1 "Decoded message: ~S" json)
-                      (let ((result (call-model model-function json)))
-                        (vom:debug1 "Result: ~S" result)
-                        (let ((response (j:encode-json-to-string result)))
-                          (vom:debug "Replying: ~S" response)
-                          (b:string-to-octets response))))))
-    (error (e)
-      (vom:error "Error handling message ~A" (tb:print-backtrace e :output nil)))
-    (serious-condition (c)
-      (vom:crit "Fatal error handling message ~A" (tb:print-backtrace c :output nil))
-      (exit 1))))
+  (vom:debug1 "Received bytes: ~S" buffer)
+  (let ((msg (string-trim #?" \n\r"
+                          (b:octets-to-string buffer :encoding :utf-8))))
+    (vom:debug "Received: ~S" msg)
+    (let (result)
+    (handler-case
+        (let* ((j:*json-identifier-name-to-lisp* #'j:simplified-camel-case-to-lisp)
+               (*read-default-float-format* 'double-float)
+               (json (with-input-from-string (s msg)
+                       (j:decode-json-strict s))))
+          (vom:debug1 "Decoded message: ~S" json)
+          (setf result (call-model model-function json)))
+      (error (e)
+        (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
+        (setf result `((:error . ,(string (type-of e)))
+                       (:message . ,msg)
+                       (:description . ,(format nil "~A" e))
+                       (:backtrace . ,(tb:print-backtrace e :output nil))))))
+      (vom:debug1 "Result: ~S" result)
+      (let ((response (j:encode-json-to-string result)))
+        (vom:debug "Replying: ~S" response)
+        (b:string-to-octets response)))))
 
 
 
@@ -171,6 +173,13 @@ zero the result will always be zero."
                   (vom:debug "ACT-UP initialized")
                   (u:socket-server nil port #'receive-udp (list model-function)
                                    :protocol :datagram))
-    (serious-condition (c)
-      (vom:crit "Error at top level ~A" (tb:print-backtrace c :output nil))
-      (exit 2))))
+    (error (e)
+      #+SBCL
+      (when (and (typep e 'usocket:socket-error)
+                 (typep (usocket::usocket-real-error e) 'sb-sys:interactive-interrupt)
+                 (zerop (usocket::usocket-errno e)))
+        (setf e nil))
+      (when e
+        (vom:crit "An error occurred at top level: ~A (~:*~S)~%~A"
+                  e (tb:print-backtrace e :output nil)))
+      (exit (if e 1 0)))))
