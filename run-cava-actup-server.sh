@@ -2,11 +2,20 @@
 
 # Should be run when cd'ed to the directory holding cava.actup-server.lisp
 
-# SBCL=/usr/local/bin/sbcl
-SBCL=$HOME/lisp/bin/sbcl
+if [ $USER != "dfm" ] ; then
+    SBCL=$HOME/lisp/bin/sbcl
+    QUICKLISP=$HOME/lisp/quicklisp
+else
+    # kludge for testing and debugging on dfm's local machine
+    SBCL=/usr/local/bin/sbcl
+    QUICKLISP=$HOME/quicklisp
+fi
 
-# QUICKLISP=$HOME/quicklisp
-QUICKLISP=$HOME/lisp/quicklisp
+if [ "$1" != "" ] ; then
+    MODEL=$1
+else
+    MODEL="recency-model"
+fi
 
 $SBCL --no-userinit --load $QUICKLISP/setup --load cava-actup-server \
-      --eval "(cava:run (quote cava:recency-model))"
+      --eval "(cava:run (quote cava:${MODEL}))"
