@@ -53,10 +53,7 @@ To run
 * and run `run-cava-actup-server.sh‘
 
 The two ACT-UP models that have been converted are named `recency-model` and `recency-frequency-model`.
-By default `run-cava-actup-server.sh‘ runs `recency-model`, but that is essentially just a parameter
-passed to the Lisp code.
-
-When run as above a default model is selected from among those available. To choose a different
+By default `run-cava-actup-server.sh` runs `recency-model`. To choose a different
 model pass its name as an argument to the script, for example, `run-cava-actup-server.sh recency-frequency‘.
 
 Note that there’s a minor testing and debugging kludge in this run script that checks on the user name;
