@@ -18,7 +18,7 @@
 ;;; OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (ql:quickload '(:alexandria :iterate :cl-interpol :usocket-server :babel :cl-json
-                :vom :trivial-backtrace))
+                :uiop :vom :trivial-backtrace))
 
 (interpol:enable-interpol-syntax)
 
@@ -37,11 +37,6 @@
 (load (merge-pathnames #P"act-up-v1_3_1" *load-truename*))
 
 (defparameter *default-port* 9017)
-
-(defun exit (&optional (status 0))
-  ;; Is there really no portability library for this in QuickLisp?
-  #+sbcl (sb-ext:exit :code status)
-  #+ccl (ccl:quit status))
 
 (defparameter *using-numeric-ids* nil)
 (defparameter *last-click* 0)
@@ -182,4 +177,4 @@ zero the result will always be zero."
       (when e
         (vom:crit "An error occurred at top level: ~A (~:*~S)~%~A"
                   e (tb:print-backtrace e :output nil)))
-      (exit (if e 1 0)))))
+      (uiop:quit (if e 1 0)))))
