@@ -83,15 +83,16 @@ called `cava-data-<datetime>.json`, in the directory containing the server sourc
 is the date and time the server was started, but this can be changed by setting the
 environment variable `CAVA_ACTR_LOGFILE`.
 
-The contents of this file are JSON objects, one per line. Each object contains five slots:
+The contents of this file are JSON objects, one per line, each corresponding to an
+interaction with the mdoel. Each object contains five slots:
 
-* `when` is the date and time the model ran, in ISO 8601 format
+* `when` is the date and time the model ran, in ISO 8601 format,
 
-* `unix-time` is the same as `when` but as a Unix time
+* `unix-time` is the same as `when` but as a Unix time,
 
-* `remote` is host from and to which the exchange took place
+* `remote` is host from and to which the exchange took place,
 
-* `message` is the JSON message received from `remote`
+* `message` is the JSON message received from `remote`,
 
 * `response` is the JSON message sent back to `remote`.
 
