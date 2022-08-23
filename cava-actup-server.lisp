@@ -18,15 +18,17 @@
 ;;; OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (ql:quickload '(:alexandria :iterate :cl-interpol :usocket-server :babel :cl-json
-                :uiop :vom :trivial-backtrace))
+                :bordeaux-threads :local-time :uiop :vom :trivial-backtrace))
 
 (interpol:enable-interpol-syntax)
 
 (defpackage :cava
   (:use :common-lisp :alexandria :iterate)
-  (:local-nicknames (:u :usocket)
-                    (:b :babel)
-                    (:j :json)
+  (:local-nicknames (:us :usocket)
+                    (:bb :babel)
+                    (:js :json)
+                    (:lt :local-time)
+                    (:ui :uiop)
                     (:tb :trivial-backtrace))
   (:export #:run #:recency-model #:recency-frequency-model))
 
@@ -36,7 +38,17 @@
 
 (load (merge-pathnames #P"act-up-v1_3_1" *load-truename*))
 
-(defparameter *default-port* 9017)
+(defparameter *default-port*
+  (or (ignore-errors (parse-integer (ui:getenvp "CAVA_ACTUP_PORT"))) 9017))
+
+(defparameter +default-logfile-template+
+  '("cava-data-" (:year 4) #\- (:month 2) #\- (:day 2) #\- (:hour 2) (:min 2)  (:sec 2)))
+
+(defparameter *logfile*
+  (merge-pathnames (or (ui:getenvp "CAVA_ACTUP_LOGFILE")
+                       (lt:format-timestring nil (lt:now)
+                                             :format +default-logfile-template+))
+                   (merge-pathnames (make-pathname :type "json") *load-truename*)))
 
 (defparameter *using-numeric-ids* nil)
 (defparameter *last-click* 0)
@@ -92,17 +104,35 @@
                           (collect (cons (symbol-name key) val))))
         (:timestamp . ,ts)))))
 
+(defparameter *log-lock* (bt:make-lock "log lock"))
+
+(defun remote-host ()
+  (let ((h us:*remote-host*))
+    (cond ((stringp h) h)
+          ((and (vectorp h) (eql (length h) 4) (every #'integerp h))
+           (format nil "~{~D~^.~}" (coerce h 'list)))
+          (t "unknown host"))))
+
+(defun write-log (message response)
+  (let ((time (lt:now)))
+    (bt:with-lock-held (*log-lock*)
+      (with-open-file (s *logfile* :direction :output :if-exists :append :if-does-not-exist :create)
+        (format s #?'{"when": "~A", "unix-time": ~D.~D, "remote": "~A", "message": ~A, "response": ~A}~%'
+                time (lt:timestamp-to-unix time) (round (lt:nsec-of time) 1000)
+                (remote-host) message response)
+        (force-output *log-stream*)))))
+
 (defun receive-udp (buffer model-function)
   (vom:debug1 "Received bytes: ~S" buffer)
   (let ((msg (string-trim #?" \n\r"
-                          (b:octets-to-string buffer :encoding :utf-8))))
+                          (bb:octets-to-string buffer :encoding :utf-8))))
     (vom:debug "Received: ~S" msg)
     (let (result)
     (handler-case
-        (let* ((j:*json-identifier-name-to-lisp* #'j:simplified-camel-case-to-lisp)
+        (let* ((js:*json-identifier-name-to-lisp* #'js:simplified-camel-case-to-lisp)
                (*read-default-float-format* 'double-float)
                (json (with-input-from-string (s msg)
-                       (j:decode-json-strict s))))
+                       (js:decode-json-strict s))))
           (vom:debug1 "Decoded message: ~S" json)
           (setf result (call-model model-function json)))
       (error (e)
@@ -112,9 +142,10 @@
                        (:description . ,(format nil "~A" e))
                        (:backtrace . ,(tb:print-backtrace e :output nil))))))
       (vom:debug1 "Result: ~S" result)
-      (let ((response (j:encode-json-to-string result)))
+      (let ((response (js:encode-json-to-string result)))
         (vom:debug "Replying: ~S" response)
-        (b:string-to-octets response)))))
+        (write-log msg response)
+        (bb:string-to-octets response)))))
 
 
 
@@ -162,12 +193,15 @@ zero the result will always be zero."
 
 (defun run (model-function &key (model-parameters) (port *default-port*))
   (handler-case (progn
+                  (open *logfile* :direction :output
+                                  :if-exists :append
+                                  :if-does-not-exist :create)
                   (vom:info "CAVA-ACT-UP-server listening on port ~D (~A)"
                             port model-function)
                   (apply #'reset model-parameters)
                   (vom:debug "ACT-UP initialized")
-                  (u:socket-server nil port #'receive-udp (list model-function)
-                                   :protocol :datagram))
+                  (us:socket-server nil port #'receive-udp (list model-function)
+                                    :protocol :datagram))
     (error (e)
       #+SBCL
       (when (and (typep e 'usocket:socket-error)
@@ -177,4 +211,4 @@ zero the result will always be zero."
       (when e
         (vom:crit "An error occurred at top level: ~A (~:*~S)~%~A"
                   e (tb:print-backtrace e :output nil)))
-      (uiop:quit (if e 1 0)))))
+      (ui:quit (if e 1 0)))))

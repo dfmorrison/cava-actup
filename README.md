@@ -76,17 +76,36 @@ JSON object will be returned, containing four slots, all with string values:
 
 
 
+## Logging ##
+
+A log of the actions taken by the model is written. By default this is in a file
+called `cava-data-<datetime>.json`, in the directory containing the server source, and where `<datetime>`
+is the date and time the server was started, but this can be changed by setting the
+environment variable `CAVA_ACTR_LOGFILE`.
+
+The contents of this file are JSON objects, one per line. Each object contains five slots:
+
+* `when` is the date and time the model ran, in ISO 8601 format
+
+* `unix-time` is the same as `when` but as a Unix time
+
+* `remote` is host from and to which the exchange took place
+
+* `message` is the JSON message received from `remote`
+
+* `response` is the JSON message sent back to `remote`.
+
+
+
 ## Next steps ##
 
 Next steps include
 
 * most importantly, working out how best to modify this to integrate comfortably with CAVA
 
-* adding logging the behavior of the model to a file, as requested by Sunny
-
 * converting the rest of Drew’s models from the highlighting demo mock up
 
-* there is currently no provision for restarting this, you kill it an launch it again; it
+* there is currently no provision for restarting this, you kill it and launch it again; it
   seems likely that we will want some protocol for restarting it more gracefully
 
 * and possibly adding a bit more flexibility to the script for launching things.

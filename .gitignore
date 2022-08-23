@@ -3,5 +3,7 @@
 *.?x??fsl
 *.bak
 *.log
+*.json
+*.csv
 old/
 
