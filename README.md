@@ -98,13 +98,27 @@ interaction with the mdoel. Each object contains five slots:
 
 
 
+## Test script ##
+
+There’s a simple, *in vitro*, test script here,`test-server.sh`. This in turn call some code
+in `test-server.lisp` that reads line delimited JSON from its standard input, sends it
+to the server with UDP, reads the responses, and prints them to its standard output.
+The file `test-data.json` is some sample data extracted from a real run.
+
+So, for example, to exercise this without actually integrating it into the rest of CAVA,
+in one terminal run the server and then in another
+run `./test-server.sh < test-data.json`, and inspect the output.
+
+
+
 ## Next steps ##
 
 Next steps include
 
 * most importantly, working out how best to modify this to integrate comfortably with CAVA
 
-* converting the rest of Drew’s models from the highlighting demo mock up
+* upgrading the models based on further information from the caller; this may also require
+  some further plumbing changes to accommodate reading disparate data from two, different sockets
 
 * there is currently no provision for restarting this, you kill it and launch it again; it
   seems likely that we will want some protocol for restarting it more gracefully

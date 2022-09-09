@@ -173,7 +173,7 @@ zero the result will always be zero."
         (for (key . val) :in alist)
         (for level := (position-if (lambda (v) (>= val v)) thresholds :from-end t))
         (when level
-          (collect (cons key (+ level 2))))))
+          (collect (cons key (+ level 1))))))
 
 (defun simple-model (id time activation-function)
   (learn `((:node ,id)))
