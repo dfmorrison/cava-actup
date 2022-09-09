@@ -120,7 +120,7 @@
         (format s #?'{"when": "~A", "unix-time": ~D.~D, "remote": "~A", "message": ~A, "response": ~A}~%'
                 time (lt:timestamp-to-unix time) (round (lt:nsec-of time) 1000)
                 (remote-host) message response)
-        (force-output *log-stream*)))))
+        (force-output s)))))            ; probably redundant?
 
 (defun receive-udp (buffer model-function)
   (vom:debug1 "Received bytes: ~S" buffer)
