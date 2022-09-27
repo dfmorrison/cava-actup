@@ -98,6 +98,8 @@
          (ts (cdr (or (assoc :timestamp json)
                       (error "No timestamp supplied for click"))))
          (offset (time-offset ts)))
+    (unless id
+      (error "IDs cannot be nil"))
     (vom:debug "Calling ~S on ~S, ~S" model-function sym offset)
     (let ((result (funcall model-function sym offset)))
       (vom:debug "Model function ~S returned ~S" model-function result)
@@ -197,15 +199,20 @@ zero the result will always be zero."
 (defparameter *history* (list nil nil))
 
 (defun sequential-model (id time)
-  (labels ((lags () (mapcar #'list '(lag1 lag2) *history*)))
+  (push id *history*)
+  (labels ((lags (&optional include-current)
+             (let ((tags '(current lag1 lag2)))
+               (unless include-current
+                 (pop tags))
+               (mapcar #'list tags *history*))))
     (prog1
         (and (second *history*)
              (place-into-bins (mapcar (curry #'apply #'cons)
                                       (third (multiple-value-list
                                               (blend-vote (lags) 'current))))))
-      (learn `((current ,id) ,@(lags)))
+      (learn (lags t))
       (actr-time (- time (actr-time)))
-      (pop (cddr (push id *history*))))))
+      (pop (cddr *history*)))))
 
 
 
