@@ -9,7 +9,7 @@ agreeable. But this seems a good place to start.
 
 When run this starts a Lisp process that listens for UDP messages (currently on port 9017, though
 that can obviously be easily changed), turns the crank of an ACT-UP model, and returns a result as
-the response to this UDP message. So far two of Drew’s models from the highlighting demo mock up have
+the response to this UDP message. So far three of Drew’s models from the highlighting demo mock up have
 been converted for use here.
 
 The messages read should contain a single JSON object, containing at least the two slots
@@ -31,7 +31,8 @@ The `levels` value is itself a JSON object, mapping `id`s to highlighting levels
 The `timestamp` is the timestamp of the message being replied to.
 For example, `{"levels": {"D":4,"C":6,"B":3}, "timestamp": 1660073624}`.
 
-The `id`s should be non-empty strings or integers, though non-empty strings are preferred. Since
+The `id`s should be non-empty strings or integers, though non-empty strings are preferred. In addition,
+the string `"nil"` should not be used. Since
 only a string may be a key in a JSON object, if an integer `id` is supplied the return value
 must use its string representation rather than the integer itself.
 
@@ -52,8 +53,9 @@ To run
 
 * and run `./run-cava-actup-server.sh‘
 
-The two ACT-UP models that have been converted are named `recency-model` and `recency-frequency-model`.
-By default `run-cava-actup-server.sh` runs `recency-model`. To choose a different
+The three ACT-UP models that have been converted are named `recency-model`,`recency-frequency-model`
+and `sequential-model`.
+By default `run-cava-actup-server.sh` runs `sequential-model`. To choose a different
 model pass its name as an argument to the script, for example, `./run-cava-actup-server.sh recency-frequency`.
 
 Note that there’s a minor testing and debugging kludge in this run script that checks the user name;
@@ -122,8 +124,6 @@ Next steps include
 
 * there is currently no provision for restarting this, you kill it and launch it again; it
   seems likely that we will want some protocol for restarting it more gracefully
-
-* and possibly adding a bit more flexibility to the script for launching things.
 
 
 

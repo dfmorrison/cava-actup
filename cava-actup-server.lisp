@@ -17,8 +17,8 @@
 ;;; CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 ;;; OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-(ql:quickload '(:alexandria :iterate :cl-interpol :usocket-server :babel :cl-json
-                :bordeaux-threads :local-time :uiop :vom :trivial-backtrace))
+(ql:quickload '(:alexandria :iterate :cl-interpol :cl-ppcre :usocket-server :babel
+                :cl-json :bordeaux-threads :local-time :uiop :vom :trivial-backtrace))
 
 (interpol:enable-interpol-syntax)
 
@@ -27,10 +27,11 @@
   (:local-nicknames (:us :usocket)
                     (:bb :babel)
                     (:js :json)
+                    (:re :ppcre)
                     (:lt :local-time)
                     (:ui :uiop)
                     (:tb :trivial-backtrace))
-  (:export #:run #:recency-model #:recency-frequency-model))
+  (:export #:run #:recency-model #:recency-frequency-model #:sequential-model))
 
 (in-package :cava)
 
@@ -59,7 +60,9 @@
   (setf *last-click* 0)
   (setf *time-origin* nil)
   (init-memory)
+  (init-similarities)
   (parameter :ol nil)
+  (parameter :ans 0)
   (iter (for (key val) :on params :by #'cddr)
         (parameter key val)))
 
@@ -98,7 +101,7 @@
     (vom:debug "Calling ~S on ~S, ~S" model-function sym offset)
     (let ((result (funcall model-function sym offset)))
       (vom:debug "Model function ~S returned ~S" model-function result)
-      (unless (consp result)
+      (unless (listp result)
         (error "Model function ~S returned an unexpected value ~S" model-function result))
       `((:levels . ,(iter (for (key . val) :in result)
                           (collect (cons (symbol-name key) val))))
@@ -143,6 +146,8 @@
                        (:backtrace . ,(tb:print-backtrace e :output nil))))))
       (vom:debug1 "Result: ~S" result)
       (let ((response (js:encode-json-to-string result)))
+        ;; seems a shame I can't figure out how to get CL-JSON to do it this way
+        (setf response (re:regex-replace #?["levels":null,] response #?["levels":{},]))
         (vom:debug "Replying: ~S" response)
         (write-log msg response)
         (bb:string-to-octets response)))))
@@ -189,9 +194,22 @@ zero the result will always be zero."
 (defun recency-frequency-model (id time)
   (simple-model id time #'activation))
 
+(defparameter *history* (list nil nil))
+
+(defun sequential-model (id time)
+  (labels ((lags () (mapcar #'list '(lag1 lag2) *history*)))
+    (prog1
+        (and (second *history*)
+             (place-into-bins (mapcar (curry #'apply #'cons)
+                                      (third (multiple-value-list
+                                              (blend-vote (lags) 'current))))))
+      (learn `((current ,id) ,@(lags)))
+      (actr-time (- time (actr-time)))
+      (pop (cddr (push id *history*))))))
+
 
 
-(defun run (model-function &key (model-parameters) (port *default-port*))
+(defun run (model-function &key model-parameters (port *default-port*))
   (handler-case (progn
                   (open *logfile* :direction :output
                                   :if-exists :append

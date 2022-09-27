@@ -14,7 +14,7 @@ fi
 if [ "$1" != "" ] ; then
     MODEL=$1
 else
-    MODEL="recency-model"
+    MODEL="sequential-model"
 fi
 
 $SBCL --no-userinit --load $QUICKLISP/setup --load cava-actup-server \
