@@ -11,11 +11,4 @@ else
     QUICKLISP=$HOME/quicklisp
 fi
 
-if [ "$1" != "" ] ; then
-    MODEL=$1
-else
-    MODEL="sequential-model"
-fi
-
-$SBCL --no-userinit --load $QUICKLISP/setup --load cava-actup-server \
-      --eval "(cava:run (quote cava:${MODEL}))"
+$SBCL --no-userinit --load $QUICKLISP/setup --load cava-actup-server --eval "(cava:run)"

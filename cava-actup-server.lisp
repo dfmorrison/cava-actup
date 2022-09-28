@@ -66,6 +66,43 @@
   (iter (for (key val) :on params :by #'cddr)
         (parameter key val)))
 
+(defun place-into-bins (alist &optional (bin-count 6))
+  (iter (with values := (mapcar #'cdr alist))
+        (with min-val := (apply #'min values))
+        (with delta := (/ (- (apply #'max values) min-val) (float bin-count)))
+        (with thresholds := (iter (for i :from 1 :to 5)
+                                  (collect (+ min-val (* i delta)))))
+        (for (key . val) :in alist)
+        (for level := (position-if (lambda (v) (>= val v)) thresholds :from-end t))
+        (when level
+          (collect (cons key (+ level 1))))))
+
+(defun past-model (id time)
+  (learn `((node ,id)))
+  (actr-time (- time (actr-time)))
+  (place-into-bins (iter (for (nil chunk) :in-hashtable *memory*)
+                         (for content := (chunk-content chunk))
+                         (when (eq (caar content) 'node)
+                           (collect (cons (cadar content) (exp (activation chunk))))))))
+
+(defparameter *history* (list nil nil))
+
+(defun future-model (id time)
+  (push id *history*)
+  (labels ((lags (&optional include-current)
+             (let ((tags '(current lag1 lag2)))
+               (unless include-current
+                 (pop tags))
+               (mapcar #'list tags *history*))))
+    (prog1
+        (and (second *history*)
+             (place-into-bins (mapcar (curry #'apply #'cons)
+                                      (third (multiple-value-list
+                                              (blend-vote (lags) 'current))))))
+      (learn (lags t))
+      (actr-time (- time (actr-time)))
+      (pop (cddr *history*)))))
+
 (defun time-offset (timestamp)
   (check-type timestamp real)
   (when (< timestamp *last-click*)
@@ -78,7 +115,7 @@
     (assert (> result 0))
     result))
 
-(defun call-model (model-function json)
+(defun run-model (json)
   (let* ((id (cdr (or (assoc :id json)
                       (error "No ID supplied for click"))))
          ;; It is important that the timestamp be double precision, as a single
@@ -100,12 +137,16 @@
          (offset (time-offset ts)))
     (unless id
       (error "IDs cannot be nil"))
-    (vom:debug "Calling ~S on ~S, ~S" model-function sym offset)
-    (let ((result (funcall model-function sym offset)))
-      (vom:debug "Model function ~S returned ~S" model-function result)
-      (unless (listp result)
-        (error "Model function ~S returned an unexpected value ~S" model-function result))
-      `((:levels . ,(iter (for (key . val) :in result)
+    (vom:debug "Calling model on ~S, ~S" sym offset)
+    (let ((past (past-model sym offset))
+          (future (future-model sym offset)))
+      (vom:debug "Past model returned ~S" past)
+      (vom:debug "Future model returned ~S" future)
+      (unless (and (listp past) (listp future))
+        (error "Model functions returned unexpected values ~S, ~S" past future))
+      `((:past . ,(iter (for (key . val) :in past)
+                        (collect (cons (symbol-name key) val))))
+        (:future . ,(iter (for (key . val) :in future)
                           (collect (cons (symbol-name key) val))))
         (:timestamp . ,ts)))))
 
@@ -127,106 +168,42 @@
                 (remote-host) message response)
         (force-output s)))))            ; probably redundant?
 
-(defun receive-udp (buffer model-function)
+(defun receive-udp (buffer)
   (vom:debug1 "Received bytes: ~S" buffer)
   (let ((msg (string-trim #?" \n\r"
                           (bb:octets-to-string buffer :encoding :utf-8))))
     (vom:debug "Received: ~S" msg)
     (let (result)
-    (handler-case
-        (let* ((js:*json-identifier-name-to-lisp* #'js:simplified-camel-case-to-lisp)
-               (*read-default-float-format* 'double-float)
-               (json (with-input-from-string (s msg)
-                       (js:decode-json-strict s))))
-          (vom:debug1 "Decoded message: ~S" json)
-          (setf result (call-model model-function json)))
-      (error (e)
-        (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
-        (setf result `((:error . ,(string (type-of e)))
-                       (:message . ,msg)
-                       (:description . ,(format nil "~A" e))
-                       (:backtrace . ,(tb:print-backtrace e :output nil))))))
+      (handler-case
+          (let* ((js:*json-identifier-name-to-lisp* #'js:simplified-camel-case-to-lisp)
+                 (*read-default-float-format* 'double-float)
+                 (json (with-input-from-string (s msg)
+                         (js:decode-json-strict s))))
+            (vom:debug1 "Decoded message: ~S" json)
+            (setf result (run-model json)))
+        (error (e)
+          (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
+          (setf result `((:error . ,(string (type-of e)))
+                         (:message . ,msg)
+                         (:description . ,(format nil "~A" e))
+                         (:backtrace . ,(tb:print-backtrace e :output nil))))))
       (vom:debug1 "Result: ~S" result)
       (let ((response (js:encode-json-to-string result)))
         ;; seems a shame I can't figure out how to get CL-JSON to do it this way
-        (setf response (re:regex-replace #?["levels":null,] response #?["levels":{},]))
+        (setf response (re:regex-replace "\":null," response "\":{},"))
         (vom:debug "Replying: ~S" response)
         (write-log msg response)
         (bb:string-to-octets response)))))
 
-
-
-;;; ACT-UP models
-
-(defun recency-only-activation (chunk &optional (trace *verbose*))
-  "Computes activation according to power law recency, no practicefrequency. If *decay* is
-zero the result will always be zero."
-  (when *optimized-learning*
-    (error "recency-only-activation cannot be used with optimized learning"))
-  (let ((activation (* (- *decay*) (log (- (get-time) (nth 0 (chunk-references chunk)))))))
-    (when *noise*
-      (incf activation (noise *noise*)))
-    (when trace
-      (format t "Calculating Chunk ~A (recency only) Activation ~6,3F.~%"
-              (chunk-name chunk) activation))
-    activation))
-
-(defun place-into-bins (alist &optional (bin-count 6))
-  (iter (with values := (mapcar #'cdr alist))
-        (with min-val := (apply #'min values))
-        (with delta := (/ (- (apply #'max values) min-val) (float bin-count)))
-        (with thresholds := (iter (for i :from 1 :to 5)
-                                  (collect (+ min-val (* i delta)))))
-        (for (key . val) :in alist)
-        (for level := (position-if (lambda (v) (>= val v)) thresholds :from-end t))
-        (when level
-          (collect (cons key (+ level 1))))))
-
-(defun simple-model (id time activation-function)
-  (learn `((:node ,id)))
-  (actr-time (- time (actr-time)))
-  (place-into-bins (mapcar (lambda (c)
-                             (cons (cadar (chunk-content c))
-                                   (exp (funcall activation-function c))))
-                           (hash-table-values *memory*))))
-
-(defun recency-model (id time)
-  (simple-model id time #'recency-only-activation))
-
-(defun recency-frequency-model (id time)
-  (simple-model id time #'activation))
-
-(defparameter *history* (list nil nil))
-
-(defun sequential-model (id time)
-  (push id *history*)
-  (labels ((lags (&optional include-current)
-             (let ((tags '(current lag1 lag2)))
-               (unless include-current
-                 (pop tags))
-               (mapcar #'list tags *history*))))
-    (prog1
-        (and (second *history*)
-             (place-into-bins (mapcar (curry #'apply #'cons)
-                                      (third (multiple-value-list
-                                              (blend-vote (lags) 'current))))))
-      (learn (lags t))
-      (actr-time (- time (actr-time)))
-      (pop (cddr *history*)))))
-
-
-
-(defun run (model-function &key model-parameters (port *default-port*))
+(defun run (&optional (port *default-port*))
   (handler-case (progn
                   (open *logfile* :direction :output
                                   :if-exists :append
                                   :if-does-not-exist :create)
-                  (vom:info "CAVA-ACT-UP-server listening on port ~D (~A)"
-                            port model-function)
-                  (apply #'reset model-parameters)
+                  (vom:info "CAVA-ACT-UP-server listening on port ~D" port)
+                  (reset)
                   (vom:debug "ACT-UP initialized")
-                  (us:socket-server nil port #'receive-udp (list model-function)
-                                    :protocol :datagram))
+                  (us:socket-server nil port #'receive-udp nil :protocol :datagram))
     (error (e)
       #+SBCL
       (when (and (typep e 'usocket:socket-error)
