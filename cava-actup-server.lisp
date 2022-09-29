@@ -39,6 +39,8 @@
 
 (load (merge-pathnames #P"act-up-v1_3_1" *load-truename*))
 
+(defparameter *init-file* (merge-pathnames #P"initial-data.lisp" *load-truename*))
+
 (defparameter *default-port*
   (or (ignore-errors (parse-integer (ui:getenvp "CAVA_ACTUP_PORT"))) 9017))
 
@@ -55,7 +57,34 @@
 (defparameter *last-click* 0)
 (defparameter *time-origin* nil)
 
-(defun reset (&rest params &key &allow-other-keys)
+(defun init-file-contents (filename)
+  (if (probe-file filename)
+      (if-let ((result (handler-case
+                           (with-open-file (in filename)
+                             (read in))
+                         (error (e)
+                           (vom:error "Couldn't read initialization file ~A (~S)"
+                                      filename e)))))
+        (or (and (listp result)
+                 (every (lambda (lst)
+                          (and (listp lst)
+                               (eql (length lst) 3)
+                               (every (lambda (sub)
+                                        (and (listp sub)
+                                             (eql (length sub) 2)
+                                             (symbolp (first sub))
+                                             (atom (second sub))))
+                                      lst)))
+                        result)
+                 (progn (vom:info "Read ~:D chunk descriptions from init file ~A"
+                                  (length result) filename)
+                        result))
+            (vom:error "Initialization file ~A appears to be in an unexpected format and is being ignored"
+                       filename))
+        (vom:warn "Read empty initialization file ~A" filename))
+      (vom:warn "No initialization file ~A" filename)))
+
+(defun reset (&key params (init-file *init-file*))
   (setf *using-numeric-ids* nil)
   (setf *last-click* 0)
   (setf *time-origin* nil)
@@ -64,7 +93,13 @@
   (parameter :ol nil)
   (parameter :ans 0)
   (iter (for (key val) :on params :by #'cddr)
-        (parameter key val)))
+        (parameter key val))
+  (handler-case
+      (dolist (chunk-description (init-file-contents init-file))
+        (learn chunk-description))
+    (error (e) (vom:error "Error while initializing memory from ~A (~S)"
+                          init-file e)))
+  (actr-time 1))
 
 (defun place-into-bins (alist &optional (bin-count 6))
   (iter (with values := (mapcar #'cdr alist))
@@ -78,6 +113,7 @@
           (collect (cons key (+ level 1))))))
 
 (defun past-model (id time)
+  (vom:debug "Calling past-model on ~S, ~S" id time)
   (learn `((node ,id)))
   (actr-time (- time (actr-time)))
   (place-into-bins (iter (for (nil chunk) :in-hashtable *memory*)
@@ -88,6 +124,7 @@
 (defparameter *history* (list nil nil))
 
 (defun future-model (id time)
+  (vom:debug "Calling future-model on ~S, ~S" id time)
   (push id *history*)
   (labels ((lags (&optional include-current)
              (let ((tags '(current lag1 lag2)))
@@ -110,7 +147,7 @@
            *last-click* timestamp))
   (setf *last-click* timestamp)
   (unless *time-origin*
-    (setf *time-origin* (- timestamp 1)))
+    (setf *time-origin* (- timestamp 2)))
   (let ((result (- timestamp *time-origin*)))
     (assert (> result 0))
     result))
