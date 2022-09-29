@@ -5,4 +5,5 @@
 *.log
 *.csv
 old/
-
+initial-data.lisp
+cava-data-*.json

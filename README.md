@@ -69,6 +69,12 @@ Note that an appropriate init file needs to be constructed for each specific tas
 upon, it depends upon the underlying graph of things to be highlighted and their IDs. Drew is currently
 the doyen of init files, and should be consulted for an appropriate one for a given task.
 
+There are a pair of init files available in the sub-directory `init-files/`. These can be copied, or probably better,
+symlinked, to `initial-data-lisp`. Note that `initial-data-lisp` is included in the `.gitignorre` file so things
+can be linked or copied there without worrying about clobbering other people’s choices in the repo.
+
+The two existing init files are intended for use with the POI task 1.
+
 
 
 ## Errors ##
