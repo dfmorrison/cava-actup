@@ -59,6 +59,17 @@ Note that there’s a minor testing and debugging kludge in this run script that
 you don’t want to run this as a user named `dfm` or unexpected things may happen.
 
 
+## Init file ##
+
+If the file `initial-data-lisp`, in this directory, exists it is read. It should contains a single Lisp form,
+and list of chunk descriptions that will be used to prime ACT-UP memory. If the file does not exist, a
+warning is printed, but everything should proceed smoothly; its use is optional.
+
+Note that an appropriate init file needs to be constructed for each specific task things are operating
+upon, it depends upon the underlying graph of things to be highlighted and their IDs. Drew is currently
+the doyen of init files, and should be consulted for an appropriate one for a given task.
+
+
 
 ## Errors ##
 
