@@ -114,7 +114,8 @@
 
 (defun place-into-bins (alist limit &optional (bins 5))
   (when (cdr alist)
-    (setf alist (subseq (stable-sort alist #'> :key #'cdr) 0 (min limit (length alist))))
+    (setf alist (stable-sort alist #'> :key #'cdr))
+    (setf alist (subseq alist 0 (min limit (length alist))))
     (iter (with min-val := (cdar (last alist)))
           (with delta := (/ (- (cdr (first alist)) min-val) (- bins 1)))
           (for (key . val) :in alist)
