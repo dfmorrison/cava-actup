@@ -76,6 +76,21 @@ can be linked or copied there without worrying about clobbering other people’s
 The two existing init files are intended for use with the POI task 1.
 
 
+## Environment variables ##
+
+There are a couple of parameters that can be set by environment variables. The are
+
+* `CAVA_PAST_MAX_HIGHLIGHTS`, which defaults to `5`
+
+and
+
+* `CAVA_FUTURE_MAX_HIGHLIGHTS`, which defaults to `3`
+
+These are the maximum number of highlighted things shown for the two prongs of the model. If these
+variables are exported from the shell from which the application is launched before launching it,
+the supplied values, which should be positive integers, will override the defaults.
+
+
 
 ## Errors ##
 

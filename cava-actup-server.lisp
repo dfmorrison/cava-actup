@@ -57,6 +57,17 @@
 (defparameter *last-click* 0)
 (defparameter *time-origin* nil)
 
+(defun integer-environment-variable-value (name &optional (default 0))
+  (check-type default integer)
+  (if-let ((value (ui:getenv name)))
+    (handler-case (parse-integer value)
+      (error (e)
+        (vom:warn "Couldn't parse value of environment variable ~A, ~S, as an integer, ~
+                   using default of ~:D instead (~S)"
+                  name value default e)
+        default))
+    default))
+
 (defun init-file-contents (filename)
   (if (probe-file filename)
       (if-let ((result (handler-case
@@ -101,16 +112,13 @@
                           init-file e)))
   (actr-time 1))
 
-(defun place-into-bins (alist &optional (bin-count 6))
-  (iter (with values := (mapcar #'cdr alist))
-        (with min-val := (apply #'min values))
-        (with delta := (/ (- (apply #'max values) min-val) (float bin-count)))
-        (with thresholds := (iter (for i :from 1 :to 5)
-                                  (collect (+ min-val (* i delta)))))
-        (for (key . val) :in alist)
-        (for level := (position-if (lambda (v) (>= val v)) thresholds :from-end t))
-        (when level
-          (collect (cons key (+ level 1))))))
+(defun place-into-bins (alist limit &optional (bins 5))
+  (when (cdr alist)
+    (setf alist (subseq (stable-sort alist #'> :key #'cdr) 0 (min limit (length alist))))
+    (iter (with min-val := (cdar (last alist)))
+          (with delta := (/ (- (cdr (first alist)) min-val) (- bins 1)))
+          (for (key . val) :in alist)
+          (collect (cons key (1+ (floor (- val min-val) delta)))))))
 
 (defun past-model (id time)
   (vom:debug "Calling past-model on ~S, ~S" id time)
@@ -119,7 +127,8 @@
   (place-into-bins (iter (for (nil chunk) :in-hashtable *memory*)
                          (for content := (chunk-content chunk))
                          (when (eq (caar content) 'node)
-                           (collect (cons (cadar content) (exp (activation chunk))))))))
+                           (collect (cons (cadar content) (exp (activation chunk))))))
+                   (integer-environment-variable-value "CAVA_PAST_MAX_HIGHLIGHTS" 5)))
 
 (defparameter *history* (list nil nil))
 
@@ -135,7 +144,9 @@
         (and (second *history*)
              (place-into-bins (mapcar (curry #'apply #'cons)
                                       (third (multiple-value-list
-                                              (blend-vote (lags) 'current))))))
+                                              (blend-vote (lags) 'current))))
+                              (integer-environment-variable-value
+                               "CAVA_FUTURE_MAX_HIGHLIGHTS" 3)))
       (learn (lags t))
       (actr-time (- time (actr-time)))
       (pop (cddr *history*)))))
@@ -227,7 +238,7 @@
       (vom:debug1 "Result: ~S" result)
       (let ((response (js:encode-json-to-string result)))
         ;; seems a shame I can't figure out how to get CL-JSON to do it this way
-        (setf response (re:regex-replace "\":null," response "\":{},"))
+        (setf response (re:regex-replace-all "\":null," response "\":{},"))
         (vom:debug "Replying: ~S" response)
         (write-log msg response)
         (bb:string-to-octets response)))))
