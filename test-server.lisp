@@ -19,8 +19,6 @@
 
 (ql:quickload '(:alexandria :iterate :usocket-server :babel))
 
-(interpol:enable-interpol-syntax)
-
 (defpackage :test-cava
   (:use :common-lisp :alexandria :iterate)
   (:local-nicknames (:us :usocket)
