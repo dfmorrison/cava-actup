@@ -127,6 +127,9 @@ interaction with the mdoel. Each object contains five slots:
 
 * `response` is the JSON message sent back to `remote`.
 
+* `past-activations` contains the chunk activations from running the past model
+
+* `future-activations` contains the chunk activations from running the future model
 
 
 ## Test script ##

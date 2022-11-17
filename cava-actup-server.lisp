@@ -39,6 +39,24 @@
 
 (load (merge-pathnames #P"act-up-v1_3_1" *load-truename*))
 
+(defparameter *activation-fn* (symbol-function 'activation))
+
+(defparameter *capture-activations* nil)
+
+(defvar *activations* nil)
+
+(fmakunbound 'activation)               ; suppress the redefinition warning
+
+(defun activation (chunk &optional (trace *verbose*))
+  (let ((result (funcall *activation-fn* chunk trace)))
+    (when *capture-activations*
+      (push (cons (chunk-content chunk) result) *activations*))
+    result))
+
+(defparameter *past-activations* nil)
+
+(defparameter *future-activations* nil)
+
 (defparameter *init-file* (merge-pathnames #P"initial-data.lisp" *load-truename*))
 
 (defparameter *default-port*
@@ -187,8 +205,13 @@
     (unless id
       (error "IDs cannot be nil"))
     (vom:debug "Calling model on ~S, ~S" sym offset)
-    (let ((past (past-model sym offset))
-          (future (future-model sym offset)))
+    (let* ((*capture-activations* t)
+           (*activations* nil)
+           (past (prog1 (past-model sym offset)
+                   (setf *past-activations* (nreverse *activations*))))
+           (*activations* nil)
+           (future (prog1 (future-model sym offset)
+                     (setf *future-activations* (nreverse *activations*)))))
       (vom:debug "Past model returned ~S" past)
       (vom:debug "Future model returned ~S" future)
       (unless (and (listp past) (listp future))
@@ -209,18 +232,27 @@
           (t "unknown host"))))
 
 (defun write-log (message response)
+  (iter (for pair in *past-activations*)
+        (setf (car pair) (princ-to-string (car pair))))
+  (iter (for pair in *future-activations*)
+        (setf (car pair) (princ-to-string (car pair))))
   (let ((time (lt:now)))
     (bt:with-lock-held (*log-lock*)
       (with-open-file (s *logfile* :direction :output :if-exists :append :if-does-not-exist :create)
-        (format s #?'{"when": "~A", "unix-time": ~D.~D, "remote": "~A", "message": ~A, "response": ~A}~%'
+        (format s #?'{"when": "~A", "unix-time": ~D.~D, "remote": "~A", "message": ~A, "response": ~A, ~
+                      "past-activations": ~A, "future-activations": ~A}~%'
                 time (lt:timestamp-to-unix time) (round (lt:nsec-of time) 1000)
-                (remote-host) message response)
+                (remote-host) message response
+                (js:encode-json-to-string *past-activations*)
+                (js:encode-json-to-string *future-activations*))
         (force-output s)))))            ; probably redundant?
 
 (defun receive-udp (buffer)
   (vom:debug1 "Received bytes: ~S" buffer)
-  (let ((msg (string-trim #?" \n\r"
-                          (bb:octets-to-string buffer :encoding :utf-8))))
+  (let* ((msg (string-trim #?" \n\r"
+                           (bb:octets-to-string buffer :encoding :utf-8)))
+         (*past-activations* nil)
+         (*future-activations* nil))
     (vom:debug "Received: ~S" msg)
     (let (result)
       (handler-case
