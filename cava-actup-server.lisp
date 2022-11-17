@@ -53,9 +53,14 @@
       (push (cons (chunk-content chunk) result) *activations*))
     result))
 
-(defparameter *past-activations* nil)
+(defmacro with-activations (&body body)
+  `(%with-activations (lambda () ,@body)))
 
-(defparameter *future-activations* nil)
+(defun %with-activations (thunk)
+  (let* ((*activations* nil)
+         (*capture-activations* t)
+         (result (funcall thunk)))
+    (values result (nreverse *activations*))))
 
 (defparameter *init-file* (merge-pathnames #P"initial-data.lisp" *load-truename*))
 
@@ -205,22 +210,20 @@
     (unless id
       (error "IDs cannot be nil"))
     (vom:debug "Calling model on ~S, ~S" sym offset)
-    (let* ((*capture-activations* t)
-           (*activations* nil)
-           (past (prog1 (past-model sym offset)
-                   (setf *past-activations* (nreverse *activations*))))
-           (*activations* nil)
-           (future (prog1 (future-model sym offset)
-                     (setf *future-activations* (nreverse *activations*)))))
-      (vom:debug "Past model returned ~S" past)
-      (vom:debug "Future model returned ~S" future)
-      (unless (and (listp past) (listp future))
-        (error "Model functions returned unexpected values ~S, ~S" past future))
-      `((:past . ,(iter (for (key . val) :in past)
-                        (collect (cons (symbol-name key) val))))
-        (:future . ,(iter (for (key . val) :in future)
-                          (collect (cons (symbol-name key) val))))
-        (:timestamp . ,ts)))))
+    (multiple-value-bind (past past-activations)
+        (with-activations (past-model sym offset))
+      (multiple-value-bind (future future-activations)
+          (with-activations (future-model sym offset))
+        (vom:debug "Past model returned ~S" past)
+        (vom:debug "Future model returned ~S" future)
+        (unless (and (listp past) (listp future))
+          (error "Model functions returned unexpected values ~S, ~S" past future))
+        (values `((:past . ,(iter (for (key . val) :in past)
+                                  (collect (cons (symbol-name key) val))))
+                  (:future . ,(iter (for (key . val) :in future)
+                                    (collect (cons (symbol-name key) val))))
+                  (:timestamp . ,ts))
+                (list past-activations future-activations))))))
 
 (defparameter *log-lock* (bt:make-lock "log lock"))
 
@@ -231,11 +234,10 @@
            (format nil "~{~D~^.~}" (coerce h 'list)))
           (t "unknown host"))))
 
-(defun write-log (message response)
-  (iter (for pair in *past-activations*)
-        (setf (car pair) (princ-to-string (car pair))))
-  (iter (for pair in *future-activations*)
-        (setf (car pair) (princ-to-string (car pair))))
+(defun write-log (message response activations)
+  (dolist (alist activations)
+    (dolist (pair alist)
+      (rplaca pair (princ-to-string (car pair)))))
   (let ((time (lt:now)))
     (bt:with-lock-held (*log-lock*)
       (with-open-file (s *logfile* :direction :output :if-exists :append :if-does-not-exist :create)
@@ -243,25 +245,23 @@
                       "past-activations": ~A, "future-activations": ~A}~%'
                 time (lt:timestamp-to-unix time) (round (lt:nsec-of time) 1000)
                 (remote-host) message response
-                (js:encode-json-to-string *past-activations*)
-                (js:encode-json-to-string *future-activations*))
+                (js:encode-json-to-string (first activations))
+                (js:encode-json-to-string (second activations)))
         (force-output s)))))            ; probably redundant?
 
 (defun receive-udp (buffer)
   (vom:debug1 "Received bytes: ~S" buffer)
-  (let* ((msg (string-trim #?" \n\r"
-                           (bb:octets-to-string buffer :encoding :utf-8)))
-         (*past-activations* nil)
-         (*future-activations* nil))
+  (let ((msg (string-trim #?" \n\r"
+                          (bb:octets-to-string buffer :encoding :utf-8))))
     (vom:debug "Received: ~S" msg)
-    (let (result)
+    (let (result activations)
       (handler-case
           (let* ((js:*json-identifier-name-to-lisp* #'js:simplified-camel-case-to-lisp)
                  (*read-default-float-format* 'double-float)
                  (json (with-input-from-string (s msg)
                          (js:decode-json-strict s))))
             (vom:debug1 "Decoded message: ~S" json)
-            (setf result (run-model json)))
+            (multiple-value-setq (result activations) (run-model json)))
         (error (e)
           (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
           (setf result `((:error . ,(string (type-of e)))
@@ -273,7 +273,7 @@
         ;; seems a shame I can't figure out how to get CL-JSON to do it this way
         (setf response (re:regex-replace-all "\":null," response "\":{},"))
         (vom:debug "Replying: ~S" response)
-        (write-log msg response)
+        (write-log msg response activations)
         (bb:string-to-octets response)))))
 
 (defun run (&optional (port *default-port*))
