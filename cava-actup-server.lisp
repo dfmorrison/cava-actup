@@ -62,7 +62,7 @@
          (result (funcall thunk)))
     (values result (nreverse *activations*))))
 
-(defparameter *init-file* (merge-pathnames #P"init_data_001.lisp" *load-truename*))
+(defparameter *init-file* (merge-pathnames #P"init_data_002.lisp" *load-truename*))
 
 (defparameter *default-port*
   (or (ignore-errors (parse-integer (ui:getenvp "CAVA_ACTUP_PORT"))) 9017))
@@ -242,7 +242,7 @@
                 (let ((*time* (- *time* 1)))
                   (dolist (chunk-desc (cdr (assoc task *initial-data* :test #'equalp)))
                     (learn (iter (for (key val) :in chunk-desc)
-                                 (collect (list key (intern val)))))))))
+                                 (collect (list key (and val (intern val))))))))))
             (multiple-value-setq (result activations) (run-model json)))
         (error (e)
           (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
