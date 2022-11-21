@@ -62,7 +62,7 @@
          (result (funcall thunk)))
     (values result (nreverse *activations*))))
 
-(defparameter *init-file* (merge-pathnames #P"initial-data.lisp" *load-truename*))
+(defparameter *init-file* (merge-pathnames #P"init_data_001.lisp" *load-truename*))
 
 (defparameter *default-port*
   (or (ignore-errors (parse-integer (ui:getenvp "CAVA_ACTUP_PORT"))) 9017))
@@ -91,32 +91,9 @@
         default))
     default))
 
-(defun init-file-contents (filename)
-  (if (probe-file filename)
-      (if-let ((result (handler-case
-                           (with-open-file (in filename)
-                             (read in))
-                         (error (e)
-                           (vom:error "Couldn't read initialization file ~A (~S)"
-                                      filename e)))))
-        (or (and (listp result)
-                 (every (lambda (lst)
-                          (and (listp lst)
-                               (eql (length lst) 3)
-                               (every (lambda (sub)
-                                        (and (listp sub)
-                                             (eql (length sub) 2)
-                                             (symbolp (first sub))
-                                             (atom (second sub))))
-                                      lst)))
-                        result)
-                 (progn (vom:info "Read ~:D chunk descriptions from init file ~A"
-                                  (length result) filename)
-                        result))
-            (vom:error "Initialization file ~A appears to be in an unexpected format and is being ignored"
-                       filename))
-        (vom:warn "Read empty initialization file ~A" filename))
-      (vom:warn "No initialization file ~A" filename)))
+(defparameter *initial-data* nil)
+
+(defparameter *current-task* nil)
 
 (defun reset (&key params (init-file *init-file*))
   (setf *using-numeric-ids* nil)
@@ -128,11 +105,9 @@
   (parameter :ans 0)
   (iter (for (key val) :on params :by #'cddr)
         (parameter key val))
-  (handler-case
-      (dolist (chunk-description (init-file-contents init-file))
-        (learn chunk-description))
-    (error (e) (vom:error "Error while initializing memory from ~A (~S)"
-                          init-file e)))
+  (setf *current-task* nil)
+  (with-open-file (in init-file)
+    (setf *initial-data* (read in)))
   (actr-time 1))
 
 (defun place-into-bins (alist limit &optional (bins 5))
@@ -142,7 +117,7 @@
     (iter (with min-val := (cdar (last alist)))
           (with delta := (/ (- (cdr (first alist)) min-val) (- bins 1)))
           (for (key . val) :in alist)
-          (collect (cons key (1+ (floor (- val min-val) delta)))))))
+          (collect (cons key (if (> delta 0) (1+ (floor (- val min-val) delta)) 1))))))
 
 (defun past-model (id time)
   (vom:debug "Calling past-model on ~S, ~S" id time)
@@ -261,6 +236,13 @@
                  (json (with-input-from-string (s msg)
                          (js:decode-json-strict s))))
             (vom:debug1 "Decoded message: ~S" json)
+            (let ((task (cdr (assoc :task json))))
+              (unless (equalp task *current-task*)
+                (setf *current-task* task)
+                (let ((*time* (- *time* 1)))
+                  (dolist (chunk-desc (cdr (assoc task *initial-data* :test #'equalp)))
+                    (learn (iter (for (key val) :in chunk-desc)
+                                 (collect (list key (intern val)))))))))
             (multiple-value-setq (result activations) (run-model json)))
         (error (e)
           (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
