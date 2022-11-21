@@ -134,11 +134,10 @@ interaction with the mdoel. Each object contains five slots:
 
 ## Test script ##
 
-There’s a simple, *in vitro*, test script here,`test-server.sh`. This in turn calls some code
-in `test-server.lisp` that reads line delimited JSON from its standard input, sends it
-to the server with UDP, reads the responses, and prints them to its standard output.
-The file `test-data.json` is some sample data extracted from a real run.
-
-So, for example, to exercise this without actually integrating it into the rest of CAVA,
-in one terminal run the server and then in another
-run `./test-server.sh < test-data.json`, and inspect the output.
+There’s a simple, *in vitro*, test script here,`test-server.sh`. This
+in turn calls some code in `test-server.lisp` that reads line
+delimited JSON from a file in the current directory named
+`test-server-data.json` sends it to the server with UDP, reads the
+responses, and prints them to its standard output. The file
+`test-server-data.json` in this directory is some sample data
+extracted from a real run.
