@@ -95,7 +95,8 @@
   (if (probe-file filename)
       (if-let ((result (handler-case
                            (with-open-file (in filename)
-                             (read in))
+                             (let ((*package* (find-package :cava)))
+                               (read in)))
                          (error (e)
                            (vom:error "Couldn't read initialization file ~A (~S)"
                                       filename e)))))
