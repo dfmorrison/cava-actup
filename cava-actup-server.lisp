@@ -107,7 +107,8 @@
         (parameter key val))
   (setf *current-task* nil)
   (with-open-file (in init-file)
-    (setf *initial-data* (read in)))
+    (setf *initial-data* (let ((*package* (find-package :cava)))
+                           (read in))))
   (actr-time 1))
 
 (defun place-into-bins (alist limit &optional (bins 5))
