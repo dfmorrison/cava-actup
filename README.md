@@ -14,8 +14,10 @@ The messages read should contain a single JSON object, containing at least the t
 
 * and `timestamp`
 
-Each of these messages corresponds to a click, at the specified time, on an displayed item
-named by the id. For example, `{"id": "C", timestamp: 1660073624"}`.
+* a third slot 'task', is optional and used for initializing the model (see below)
+
+Each of these messages corresponds to a click, at the specified time, during a specified task, on a
+displayed item named by the id. For example, `{"task": "Relabel_1", "id": "C", timestamp: 1660073624"}`.
 
 The return value is also a JSON object, with three slots
 
@@ -31,7 +33,8 @@ For example, `{"past": {"D":4,"C":3}, "future": {"C":5,"B":3}, "timestamp": 1660
 Note that the same `id` can be duplicated between `past` and `future`, and it is currently
 the Ghidra of of thing’s responsibility to figure out what to do in that case, typically favoring
 `future` over `past`. If this is a problem, we can easily force this preference on the Lisp side,
-if preferred.
+if preferred. Additional activation data is also output, but this is intended only for post-processing
+data analysis.
 
 The `id`s should be non-empty strings or integers, though non-empty strings are preferred. In addition,
 the string `"nil"` should not be used. Since
@@ -61,19 +64,18 @@ you don’t want to run this as a user named `dfm` or unexpected things may happ
 
 ## Init file ##
 
-If the file `initial-data-lisp`, in this directory, exists it is read. It should contains a single Lisp form,
+If the file `init_data.lisp`, in this directory, exists it is read. It should contains a single Lisp form,
 and list of chunk descriptions that will be used to prime ACT-UP memory. If the file does not exist, a
 warning is printed, but everything should proceed smoothly; its use is optional.
 
-Note that an appropriate init file needs to be constructed for each specific task things are operating
+Note that an appropriate init file needs to be constructed for each specific user things are operating
 upon, it depends upon the underlying graph of things to be highlighted and their IDs. Drew is currently
-the doyen of init files, and should be consulted for an appropriate one for a given task.
+the doyen of init files, and should be consulted for an appropriate one for a given user.
 
-There are a pair of init files available in the sub-directory `init-files/`. These can be copied, or probably better,
-symlinked, to `initial-data-lisp`. Note that `initial-data-lisp` is included in the `.gitignorre` file so things
-can be linked or copied there without worrying about clobbering other people’s choices in the repo.
-
-The two existing init files are intended for use with the POI task 1.
+There are several init files available in the sub-directory `init-files/`. The user id is appended to the 
+name of each file and the appropriate one should be selected at startup. These can be copied, or probably
+better, symlinked, to `init_data.lisp`. Note that `init_data.lisp` is included in the `.gitignorre` file
+so things can be linked or copied there without worrying about clobbering other people’s choices in the repo.
 
 
 ## Environment variables ##
