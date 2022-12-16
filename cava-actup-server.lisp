@@ -39,6 +39,9 @@
 
 (load (merge-pathnames #P"act-up-v1_3_1" *load-truename*))
 
+(defparameter *clear-past-chunks* nil)
+(defparameter *clear-future-chunks* nil)
+
 (defparameter *activation-fn* (symbol-function 'activation))
 
 (defparameter *capture-activations* nil)
@@ -62,7 +65,7 @@
          (result (funcall thunk)))
     (values result (nreverse *activations*))))
 
-(defparameter *init-file* (merge-pathnames #P"init_data_002.lisp" *load-truename*))
+(defparameter *init-file* (merge-pathnames #P"init_data.lisp" *load-truename*))
 
 (defparameter *default-port*
   (or (ignore-errors (parse-integer (ui:getenvp "CAVA_ACTUP_PORT"))) 9017))
@@ -103,22 +106,23 @@
   (init-similarities)
   (parameter :ol nil)
   (parameter :ans 0)
+  (parameter :v nil)
   (iter (for (key val) :on params :by #'cddr)
         (parameter key val))
   (setf *current-task* nil)
   (with-open-file (in init-file)
     (setf *initial-data* (let ((*package* (find-package :cava)))
-                           (read in))))
+			   (read in))))
   (actr-time 1))
 
 (defun place-into-bins (alist limit &optional (bins 5))
-  (when (cdr alist)
+  ;;(when (cdr alist)
     (setf alist (stable-sort alist #'> :key #'cdr))
     (setf alist (subseq alist 0 (min limit (length alist))))
     (iter (with min-val := (cdar (last alist)))
           (with delta := (/ (- (cdr (first alist)) min-val) (- bins 1)))
           (for (key . val) :in alist)
-          (collect (cons key (if (> delta 0) (1+ (floor (- val min-val) delta)) 1))))))
+          (collect (cons key (if (> delta 0) (1+ (floor (- val min-val) delta)) 1)))));;)
 
 (defun past-model (id time)
   (vom:debug "Calling past-model on ~S, ~S" id time)
@@ -140,8 +144,9 @@
                (unless include-current
                  (pop tags))
                (mapcar #'list tags *history*))))
+    (vom:debug "Context is ~S" (lags))
     (prog1
-        (and (second *history*)
+        (and (first *history*)
              (place-into-bins (mapcar (curry #'apply #'cons)
                                       (third (multiple-value-list
                                               (blend-vote (lags) 'current))))
@@ -240,10 +245,26 @@
             (let ((task (cdr (assoc :task json))))
               (unless (equalp task *current-task*)
                 (setf *current-task* task)
-                (let ((*time* (- *time* 1)))
-                  (dolist (chunk-desc (cdr (assoc task *initial-data* :test #'equalp)))
-                    (learn (iter (for (key val) :in chunk-desc)
-                                 (collect (list key (and val (intern val))))))))))
+		;;set actr-time back -1.0 second
+		(actr-time -1.0)
+		;;remove past chunks from *memory*
+		(when *clear-past-chunks*
+		  (maphash #'(lambda (name chunk)
+			       (when (eq (caar (chunk-content chunk)) 'node)
+				 (remhash name *memory*))) *memory*))
+		;;remove future chunks from *memory*
+		(when *clear-future-chunks*
+		  (maphash #'(lambda (name chunk)
+			       (when (eq (caar (chunk-content chunk)) 'current)
+				 (remhash name *memory*))) *memory*))
+		;;reset *history* to nil
+		(setf *history* (list nil nil))
+		;;intialize model with task-specific chunks
+                (dolist (chunk-desc (cdr (assoc task *initial-data* :test #'equalp)))
+                  (learn (iter (for (key val) :in chunk-desc)
+                               (collect (list key (and val (intern val)))))))
+		;;push actr-time back forward 1.0 second
+		(actr-time 1.0)))
             (multiple-value-setq (result activations) (run-model json)))
         (error (e)
           (vom:error "Error handling message ~A: ~A (~:*~S)" msg e)
@@ -259,7 +280,9 @@
         (write-log msg response activations)
         (bb:string-to-octets response)))))
 
-(defun run (&optional (port *default-port*))
+(defun run (&optional (clear-past-chunks nil) (clear-future-chunks nil) (port *default-port*))
+  (setf *clear-past-chunks* clear-past-chunks)
+  (setf *clear-future-chunks* clear-future-chunks)
   (handler-case (progn
                   (open *logfile* :direction :output
                                   :if-exists :append
